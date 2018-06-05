@@ -81,18 +81,23 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     # check if bigwigToBedGraph and bedGraphToBigwig is in the path
+    missing_tool = False
     try:
         check = subprocess.Popen(['bigwigToBedGraph'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except OSError:
         logger.error('bigwigToBedGraph is not in the $PATH')
+        missing_tool = True
     except subprocess.CalledProcessError:
         pass
     try:
         check = subprocess.Popen(['bedGraphToBigwig'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except OSError:
         logger.error('bedGraphToBigwig is not in the $PATH')
+        missing_tool = True
     except subprocess.CalledProcessError:
         pass
+    if missing_tool:
+        sys.exit()
 
     rm_tmp_list = []
     temp_dir = os.path.dirname(args.input_bigwig)
@@ -136,7 +141,6 @@ if __name__ == '__main__':
     if os.path.exists(output_file):
         output_file += str(uuid.uuid1())
     rm_tmp_list.append(output_file)
-    cmd = 'cat %s | sort -k1,1 -k2,2n > %s' % (' '.join(Subset_bedGraph), os.path.join(args.out, 'output.bedgraph'))
     cmd = ['cat'].extend(Subset_bedGraph)
     cat_stdout = subprocess.Popen(cmd, stdout=subprocess.PIPE)
     tmp_out = open(output_file, 'w')
