@@ -83,14 +83,14 @@ if __name__ == '__main__':
     # check if bigwigToBedGraph and bedGraphToBigwig is in the path
     missing_tool = False
     try:
-        check = subprocess.Popen(['bigwigToBedGraph'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        check = subprocess.Popen(['bigWigToBedGraph'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except OSError:
         logger.error('bigwigToBedGraph is not in the $PATH')
         missing_tool = True
     except subprocess.CalledProcessError:
         pass
     try:
-        check = subprocess.Popen(['bedGraphToBigwig'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        check = subprocess.Popen(['bedGraphToBigWig'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except OSError:
         logger.error('bedGraphToBigwig is not in the $PATH')
         missing_tool = True
