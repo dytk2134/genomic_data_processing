@@ -18,6 +18,7 @@ import subprocess
 import os
 import re
 import uuid
+import shutil
 
 __version__ = '1.0.0'
 
@@ -67,14 +68,14 @@ if __name__ == '__main__':
     from textwrap import dedent
     parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter, description=dedent("""\
 
-    Extract the specified regions from the bigwig file.
+    Extract portions of bigwig data from a bigwig file. The specific regions can be specified as: RNAME[:STARTPOS[-ENDPOS]].
 
     Quick start:
     %(prog)s -in_b input.bigwig -regions region.txt -f genome.fasta -out_b output.bigwig
     """))
     # argument
     parser.add_argument('-in_b', '--input_bigwig', type=str, help='Input Bigwig file', required=True)
-    parser.add_argument('-regions', '--regions', type=str, help='Input a file that contain the list of the specified regions. Regions can be specified as: RNAME[:STARTPOS[-ENDPOS]]', required=True)
+    parser.add_argument('-regions', '--regions', type=str, help='Input a file that contain the list of the specific regions. Regions can be specified as: RNAME[:STARTPOS[-ENDPOS]]', required=True)
     parser.add_argument('-f', '--fasta', type=str, help='The genome fasta')
     parser.add_argument('-out_b', '--output_bigwig', type=str, help='Output Bigwig file', required=True)
     parser.add_argument('-v', '--version', action='version', version='%(prog)s ' + __version__)
@@ -117,37 +118,52 @@ if __name__ == '__main__':
         for line in scaffold_f:
             line = line.strip()
             if line:
-                regions = list(filter(None, re.compile("(\w+):(\d+)-(\d+)").split(line)))
-                if len(regions) == 0:
-                    logger.warning('Failed to recognize the region: %s' % (line))
-                    continue
-                else:
-                    # chr1:123-456
-                    output_file = os.path.join(temp_dir, line + '.bedgraph' )
-                    if os.path.exists(output_file):
-                        output_file += str(uuid.uuid1())
-                    rm_tmp_list.append(output_file)
-                    Subset_bedGraph.append(output_file)
-                    cmd = ['bigWigToBedGraph', args.input_bigwig, output_file]
-                    for idx, value in enumerate(regions):
-                        if idx == 0:
-                            cmd.append('-chrom=' + regions[0])
-                        elif idx == 1:
-                            cmd.append('-start=' + regions[1])
-                        elif idx == 2:
-                            cmd.append('-end=' + regions[2])
-                    subprocess.Popen(cmd).wait()
-    output_file = os.path.join(temp_dir, 'merge.bedgraph')
-    if os.path.exists(output_file):
-        output_file += str(uuid.uuid1())
-    rm_tmp_list.append(output_file)
-    cmd = ['cat'].extend(Subset_bedGraph)
-    cat_stdout = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-    tmp_out = open(output_file, 'w')
-    subprocess.Popen(['sort', '-k1,1', '-k2,2n'], stdin=cat_stdout.stdout, stdout=tmp_out)
+                # pattern: RNAME:START-END
+                match = re.match(r'(\w+):(\d+)-(\d+)', line)
+                if not bool(match):
+                    # pattern: RNAME:START
+                    match = re.match(r'(\w+):(\d+)', line)
+                    if not bool(match):
+                        # pattern: RNAME
+                        match = re.match(r'(\w+)', line)
+                        if not bool(match):
+                            logger.warning('Failed to recognize the region: %s' % (line))
+                            continue
+                regions = match.groups()
+                # chr1:123-456
+                output_file = os.path.join(temp_dir, line + '.bedgraph' )
+                if os.path.exists(output_file):
+                    output_file += str(uuid.uuid1())
+                rm_tmp_list.append(output_file)
+                Subset_bedGraph.append(output_file)
+                cmd = ['bigWigToBedGraph', args.input_bigwig, output_file]
+                for idx, value in enumerate(regions):
+                    if idx == 0:
+                        cmd.append('-chrom=' + regions[0])
+                    elif idx == 1:
+                        cmd.append('-start=' + regions[1])
+                    elif idx == 2:
+                        cmd.append('-end=' + regions[2])
+                subprocess.Popen(cmd).wait()
+    merge_file = os.path.join(temp_dir, 'merge.bedgraph')
+    if os.path.exists(merge_file):
+        merge_file += str(uuid.uuid1())
+    rm_tmp_list.append(merge_file)
+    # merge all the bedgraph subset
+    with open(merge_file, 'wb') as merge_f:
+        for f in Subset_bedGraph:
+            with open(f, 'rb') as fd:
+                # data read in chunks to avoid reading big file into memory
+                shutil.copyfileobj(fd, merge_f)
+    sort_file = os.path.join(temp_dir, 'merge_sort.bedgraph')
+    if os.path.exists(sort_file):
+        sort_file += str(uuid.uuid1())
+    rm_tmp_list.append(sort_file)
+    tmp_out = open(sort_file, 'w')
+    subprocess.Popen(['sort', '-k1,1', '-k2,2n', merge_file], stdout=tmp_out).wait()
     tmp_out.close()
     # convert bedGraph to bigwig
-    subprocess.Popen(['bedGraphToBigWig', output_file, chrom, args.output_bigwig]).wait()
+    subprocess.Popen(['bedGraphToBigWig', sort_file, chrom, args.output_bigwig]).wait()
     # remove all the tmp file
     for rmfile in rm_tmp_list:
         if os.path.exists(rmfile):
